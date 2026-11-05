@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Insights Wheel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: game-show stage. Lobby (join link + who's in) -> game (wheel left, 32 cards right) -> card overlay. Stacks on phones. */
+:root {
+  --bg: #16113a; --surface: #211a52; --surface-2: #2c2468; --fg: #f7f4ff; --muted: #b8b0e8; --line: #3d3486;
+  --accent: #ffd23f; --accent-ink: #1b1442; --pink: #ff6fae; --ok: #5fe0a0; --warn: #ffb35c;
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100vh; color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  background: radial-gradient(1200px 700px at 15% -10%, #3a2a8f 0%, transparent 60%), radial-gradient(900px 600px at 110% 110%, #5b1f6e 0%, transparent 55%), var(--bg);
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.wrap {
+  max-width: 1400px; margin: 0 auto; padding: 18px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 18px;
+}
+.wrap > * { min-width: 0; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .logo { font-size: 34px; line-height: 1; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(22px, 3.4vw, 34px); line-height: 1.05; margin: 2px 0 0; }
+h1 span { color: var(--accent); }
+h2 { font-family: var(--font-display); font-weight: 700; font-size: clamp(20px, 3vw, 30px); line-height: 1.1; margin: 0; text-wrap: balance; }
+.who { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--muted); }
+.who b { color: var(--fg); }
+.link { background: none; border: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; padding: 0; font-weight: 600; }
+.panel { background: color-mix(in oklab, var(--surface) 92%, transparent); border: 1px solid var(--line); border-radius: 22px; padding: 22px; }
+.btn {
+  border: 0; border-radius: 999px; padding: 12px 22px; font-weight: 800; font-size: 16px; background: var(--surface-2); color: var(--fg);
+  border: 1px solid var(--line); transition: transform .12s ease, filter .12s ease;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 6px 0 #b8901a; }
+.btn.primary:active { box-shadow: 0 2px 0 #b8901a; transform: translateY(4px); }
+.btn.big { font-family: var(--font-display); font-size: clamp(18px, 2.2vw, 24px); padding: 16px 34px; }
+.btn.small { padding: 7px 14px; font-size: 13px; font-weight: 700; }
+.btn.danger { color: var(--warn); }
+.notice { min-height: 0; color: var(--warn); font-weight: 600; text-align: center; }
+.notice:empty { display: none; }
+
+/* Join */
+.join { max-width: 560px; margin: 4vh auto 0; display: grid; gap: 18px; }
+.join label { font-weight: 700; display: block; margin-bottom: 8px; }
+.join input[type=text], .pin input {
+  width: 100%; font: inherit; font-size: 20px; font-weight: 700; padding: 14px 16px; border-radius: 14px;
+  border: 2px solid var(--line); background: var(--bg); color: var(--fg); outline: none;
+}
+.join input:focus, .pin input:focus { border-color: var(--accent); }
+.hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.avatars { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; }
+.avatars button {
+  aspect-ratio: 1; border-radius: 16px; border: 2px solid var(--line); background: var(--bg); font-size: 28px; line-height: 1;
+  display: grid; place-items: center; transition: transform .12s ease;
+}
+.avatars button:hover { transform: scale(1.08); }
+.avatars button[aria-pressed=true] { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 22%, var(--bg)); transform: scale(1.08); }
+.pin { max-width: 380px; margin: 10vh auto 0; display: grid; gap: 14px; text-align: center; }
+
+/* Lobby */
+.lobby { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); align-items: start; }
+.joinbox { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.joinurl { font-family: var(--font-mono); font-weight: 700; font-size: clamp(14px, 1.6vw, 19px); color: var(--accent); word-break: break-all; }
+#qr { background: #fff; padding: 12px; border-radius: 16px; line-height: 0; }
+#qr img, #qr canvas { width: min(240px, 60vw) !important; height: auto !important; }
+.count { font-family: var(--font-display); font-size: 15px; color: var(--muted); }
+.count b { color: var(--accent); font-size: 22px; }
+.people { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }
+.person {
+  position: relative; display: grid; justify-items: center; gap: 4px; padding: 12px 6px 10px; border-radius: 18px;
+  background: var(--surface-2); border: 1px solid var(--line); animation: pop .45s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+.person .av { font-size: 38px; line-height: 1; }
+.person .nm { font-weight: 800; font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person.me { border-color: var(--accent); }
+.person .x {
+  position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: transparent;
+  color: var(--muted); font-size: 16px; line-height: 1; opacity: 0; transition: opacity .15s;
+}
+.person:hover .x, .person .x:focus-visible { opacity: 1; }
+.person .x:hover { color: var(--warn); }
+.empty { color: var(--muted); text-align: center; padding: 30px 10px; }
+.startrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 18px; }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Game */
+.game { display: grid; gap: 18px; grid-template-columns: minmax(300px, .78fr) minmax(0, 1.5fr); align-items: start; }
+.stage { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.wheelbox { position: relative; width: min(42vh, 32vw, 440px); aspect-ratio: 1; }
+.wheelbox canvas { width: 100%; height: 100%; display: block; filter: drop-shadow(0 14px 30px rgba(0, 0, 0, .45)); }
+.pointer {
+  position: absolute; left: 50%; top: -8px; transform: translateX(-50%); width: 0; height: 0; z-index: 2;
+  border-left: 16px solid transparent; border-right: 16px solid transparent; border-top: 30px solid var(--accent);
+  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .4));
+}
+.banner { min-height: 96px; display: grid; gap: 4px; align-content: center; justify-items: center; }
+.banner .big { font-family: var(--font-display); font-weight: 800; font-size: clamp(22px, 2.8vw, 34px); line-height: 1.1; }
+.banner .big .av { font-size: 1.3em; vertical-align: -0.12em; }
+.banner .sub { color: var(--muted); font-weight: 600; font-size: 16px; }
+.banner .sub b { color: var(--accent); }
+.banner.mine .big { color: var(--accent); }
+.banner.land { animation: pop .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.cards { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: clamp(8px, 1.1vw, 16px); }
+.card {
+  aspect-ratio: 1; border-radius: 50%; border: 0; display: grid; place-items: center; position: relative;
+  background: var(--c); color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: clamp(18px, 2.4vw, 34px);
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, .14), 0 6px 14px rgba(0, 0, 0, .3); transition: transform .15s ease, filter .3s ease, opacity .3s ease;
+}
+.card:not(:disabled):hover { transform: translateY(-4px) scale(1.06); }
+.card:disabled { cursor: default; }
+.card.used { filter: grayscale(1) brightness(.55); opacity: .5; box-shadow: none; }
+.card.used .num { font-size: .6em; opacity: .8; }
+.card .by { position: absolute; bottom: 6%; font-size: .55em; line-height: 1; }
+.card.host-used:hover { opacity: .8; }
+.players { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 8px; border-radius: 999px; background: var(--surface-2);
+  border: 1px solid var(--line); font-weight: 700; font-size: 14px;
+}
+.chip.done { opacity: .45; }
+.chip.done::after { content: "✓"; color: var(--ok); }
+.chip.now { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.chip.me { outline: 2px solid var(--pink); outline-offset: 1px; }
+.hostbar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; color: var(--muted); font-size: 13px; }
+.kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+
+/* Open card */
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px;
+  background: rgba(10, 6, 30, .78); backdrop-filter: blur(6px);
+}
+.reveal { display: grid; gap: 18px; justify-items: center; perspective: 1400px; }
+.answerer { display: inline-flex; align-items: center; gap: 10px; padding: 8px 20px 8px 12px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-family: var(--font-display); font-weight: 700; font-size: clamp(16px, 2vw, 22px); }
+.answerer .av { font-size: 1.5em; line-height: 1; }
+.bigcard {
+  width: min(78vh, 88vw, 640px); aspect-ratio: 1; border-radius: 50%; border: 0; background: var(--c); color: var(--ink);
+  display: grid; place-items: center; align-content: center; gap: 10px; padding: 12%; text-align: center;
+  box-shadow: inset 0 -14px 0 rgba(0, 0, 0, .14), 0 30px 60px rgba(0, 0, 0, .5); animation: flip .7s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+.bigcard:disabled { cursor: default; }
+.bigcard .n { font-family: var(--font-mono); font-weight: 700; font-size: clamp(14px, 1.8vw, 18px); opacity: .7; }
+.bigcard .q { font-family: var(--font-body); font-weight: 800; font-size: clamp(20px, 3.6vh, 38px); line-height: 1.22; text-wrap: balance; }
+@keyframes flip { from { transform: rotateY(90deg) scale(.6); opacity: 0; } to { transform: rotateY(0) scale(1); opacity: 1; } }
+.overlay .actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; }
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 30; width: 100vw; height: 100vh; }
+
+@media (max-width: 900px) {
+  .lobby, .game { grid-template-columns: minmax(0, 1fr); }
+  .wheelbox { width: min(78vw, 360px); }
+  .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .card { font-size: clamp(18px, 6vw, 30px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">🎡</div>
+      <div>
+        <div class="eyebrow">Insights Weekly · Spin, pick, spill</div>
+        <h1>Insights <span>Wheel</span></h1>
+      </div>
+    </div>
+    <div class="who" id="who" hidden></div>
+  </header>
+
+  <div class="notice" id="notice" role="status"></div>
+
+  <!-- Host PIN -->
+  <form class="panel pin" id="pinSec" hidden>
+    <h2>Host login</h2>
+    <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="Host PIN" aria-label="Host PIN">
+    <button class="btn primary" type="submit">Enter</button>
+  </form>
+
+  <!-- Join -->
+  <form class="panel join" id="joinSec" hidden>
+    <div>
+      <h2 id="joinTitle">Join the wheel 🎡</h2>
+      <div class="hint" id="joinHint">Pick a name and an avatar. You'll see the game live here.</div>
+    </div>
+    <div>
+      <label for="nameInput">Your name</label>
+      <input id="nameInput" type="text" maxlength="20" autocomplete="given-name" placeholder="First name only, please">
+    </div>
+    <div>
+      <label>Your avatar</label>
+      <div class="avatars" id="avatars"></div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <button class="btn primary big" type="submit" id="joinBtn">I'm in!</button>
+      <button class="link" type="button" id="joinCancel" hidden>Cancel</button>
+    </div>
+  </form>
+
+  <!-- Lobby -->
+  <section class="lobby" id="lobbySec" hidden>
+    <div class="panel joinbox" id="joinBox">
+      <h2>Grab your phone 📱</h2>
+      <div id="qr"></div>
+      <div class="joinurl" id="joinUrl"></div>
+      <div class="hint">Scan or open the link, add your first name and pick an avatar.</div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <h2 id="lobbyTitle">Who's in?</h2>
+        <div class="count" id="lobbyCount"></div>
+      </div>
+      <div class="people" id="people"></div>
+      <div class="startrow" id="startRow" hidden>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn small" type="button" id="hostJoin">Join as a player too</button>
+          <button class="btn small danger" type="button" id="clearAll">Clear everyone</button>
+        </div>
+        <button class="btn primary big" type="button" id="startBtn">Start game ▶</button>
+      </div>
+      <div class="hint" id="waitHint" hidden style="margin-top:16px;text-align:center;font-size:15px">Waiting for João to start the game… 🍿</div>
+    </div>
+  </section>
+
+  <!-- Game -->
+  <section class="game" id="gameSec" hidden>
+    <div class="panel stage">
+      <div class="wheelbox"><div class="pointer"></div><canvas id="wheel" aria-label="Spinning wheel of names"></canvas></div>
+      <div class="banner" id="banner" aria-live="polite"></div>
+      <button class="btn primary big" type="button" id="spinBtn" hidden>Spin 🎡</button>
+    </div>
+    <div class="panel" style="display:grid;gap:18px">
+      <div class="cards" id="cards"></div>
+      <div class="players" id="chips"></div>
+      <div class="hostbar" id="hostBar" hidden>
+        <span><span class="kbd">Space</span> spin · click a card to flip · click it again to finish</span>
+        <button class="btn small" type="button" id="soundBtn"></button>
+        <button class="btn small" type="button" id="newGameBtn">New game</button>
+        <button class="btn small" type="button" id="lobbyBtn">Back to lobby</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Open card -->
+<div class="overlay" id="overlay" hidden>
+  <div class="reveal">
+    <div class="answerer" id="answerer" hidden></div>
+    <button class="bigcard" type="button" id="bigCard"><span class="n" id="bigNum"></span><span class="q" id="bigQ"></span></button>
+    <div class="actions" id="overlayActions" hidden>
+      <button class="btn primary" type="button" id="doneBtn">Done ✓</button>
+      <button class="link" type="button" id="backBtn">Put it back</button>
+    </div>
+  </div>
+</div>
+<canvas id="fx"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://icqnqhnzbcbaicjpwdxs.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljcW5xaG56YmNiYWljanB3ZHhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NjMzMTIsImV4cCI6MjEwODMzOTMxMn0.fIp4n-xeN-EbtBHTvrt_-L2aMLq0QWoNcDRf2X-Rs6w";
+const POLL_MS = 4000;
+
+const QUESTIONS = [
+  "If your life had a “Known Issues” section, what would be at the top?",
+  "What's the last thing you watched a YouTube tutorial for — and did it actually work?",
+  "You get one lifetime free subscription — and it can't be streaming. What do you pick?",
+  "What song, jingle or advert could you still sing word for word, against your will?",
+  "What's the best thing you ate this week?",
+  "Fill in: “People think I'm the kind of person who ___, but actually I ___.”",
+  "You get a real-life Undo button — one use only. What do you undo?",
+  "What's the most chaotic thing that's ever happened off-camera during a call?",
+  "You enter every meeting with a theme song. What is it?",
+  "What do you do that you were sure everyone does — until you found out they don't?",
+  "You can instantly master one skill, but it must be completely useless at work. Which one?",
+  "What's your villain name — and what's your evil power?",
+  "Zombie apocalypse: which teammate do you call first, and why?",
+  "If you were a Salesforce feature, which one would you be, and why?",
+  "What's the worst advice you've ever been given, at work or in life?",
+  "You can make one rule every client must follow. What is it?",
+  "What's a skill you have that would surprise everyone here?",
+  "What three words in a client email make your heart stop?",
+  "What food would you defend to the death that everyone else hates?",
+  "A film is made about your life. Who plays you, and what's the title?",
+  "What's the best thing a colleague ever did for you at work?",
+  "What's your most controversial tech opinion?",
+  "What's the most random thing you've bought online — and don't regret at all?",
+  "What's the most “consultant” sentence you've ever said with a straight face?",
+  "If your current project were a film, what genre would it be?",
+  "Invent a new acronym the whole team should start using — and tell us what it means.",
+  "Desert island: you can bring one teammate and one Salesforce feature. Which ones?",
+  "Whose job in the company would you shadow for a day, and why?",
+  "Would you rather sit in a meeting that should have been an email — or answer an email thread that should have been a meeting?",
+  "Would you rather reply-all with a complaint about the project — or share your screen with your personal shopping cart open?",
+  "Would you rather log your time every fifteen minutes — or have no timesheets but justify every hour live to your PM on Friday?",
+  "Would you rather have your family walk behind you in a client demo — or have your pet or child unmute you at the worst moment?"
+];
+const AVATARS = ["🦊","🐼","🐸","🦁","🐯","🐨","🐵","🦄","🐙","🦉","🐧","🐢","🦖","🐝","🦋","🐳","🦩","🐶","🐱","🐰","🦔","🦥","🐲","👽","🤖","🧙","🦸","🥷","🧛","👻","🍕","🌮","🍩","☕","🌵","🚀","🎸","⚽","🎮","🌈"];
+const COLORS = [
+  ["#fbf1a9", "#3a3000"], ["#f4d2ae", "#3d2410"], ["#f7c5c8", "#4a1418"], ["#b9ebc9", "#0f3a1d"],
+  ["#c9dafc", "#13254d"], ["#dad3f8", "#2a2152"], ["#f8d75e", "#3a2e00"], ["#f2a35a", "#3b1d00"],
+  ["#ec6866", "#ffffff"], ["#58c268", "#062a0e"], ["#6e9be9", "#ffffff"], ["#8c7be3", "#ffffff"],
+  ["#a8852c", "#ffffff"], ["#8b4a20", "#ffffff"], ["#b0281f", "#ffffff"], ["#2f6e33", "#ffffff"],
+  ["#3b5aa6", "#ffffff"], ["#6236c9", "#ffffff"], ["#a3dcf3", "#0b3346"], ["#9f9f9f", "#ffffff"]
+];
+const cardColor = i => COLORS[(i + Math.floor(i / 8) * 3) % COLORS.length];
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  sget(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+  sset(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+};
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+let myId = store.get("iw.id");
+if (!myId) { myId = newId(); store.set("iw.id", myId); }
+let myName = store.get("iw.name") || "";
+let myAvatar = store.get("iw.avatar") || AVATARS[Math.floor(Math.random() * AVATARS.length)];
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let state = null;
+let pin = store.sget("iw.pin"), isHost = false;
+let editing = false, hostJoining = false, busy = false;
+let armed = null, armTimer = null;
+let soundOn = store.get("iw.sound") !== "off";
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const setNotice = t => { $("notice").textContent = t || ""; };
+const wantsHost = () => location.hash.replace("#", "").toLowerCase() === "host";
+const playersById = () => Object.fromEntries((state ? state.players : []).map(p => [p.id, p]));
+const meIn = () => !!state && state.players.some(p => p.id === myId);
+const activeSpin = () => state && state.spin && !state.spin.done ? state.spin : null;
+
+/* ---------- state ---------- */
+async function loadState() {
+  const { data, error } = await sb.from("wheel_state").select("*").eq("id", 1).maybeSingle();
+  if (error) { setNotice("Can't reach the game right now. Retrying…"); return; }
+  if (data) applyState(data);
+}
+let holdUntil = 0; // after an instant (optimistic) host action, ignore stale copies until the server catches up
+function applyState(s) {
+  if (!s) return;
+  if (state && Date.now() < holdUntil && Date.parse(s.updated_at) <= Date.parse(state.updated_at)) return;
+  if (state && Date.parse(s.updated_at) < Date.parse(state.updated_at)) return;
+  state = s;
+  if ($("notice").textContent.startsWith("Can't reach")) setNotice("");
+  syncWheel();
+  render();
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  if (!state) return;
+  const needPin = wantsHost() && !isHost;
+  const showJoin = !needPin && ((!isHost && (!meIn() || editing)) || (isHost && hostJoining));
+  $("pinSec").hidden = !needPin;
+  $("joinSec").hidden = !showJoin;
+  $("lobbySec").hidden = needPin || showJoin || state.phase !== "lobby" || (!isHost && !meIn());
+  $("gameSec").hidden = needPin || showJoin || state.phase !== "playing";
+  renderWho();
+  if (showJoin) renderJoin();
+  if (!$("lobbySec").hidden) renderLobby();
+  if (!$("gameSec").hidden) renderGame();
+  renderOverlay();
+}
+
+function renderWho() {
+  const w = $("who"); w.replaceChildren();
+  const me = playersById()[myId];
+  if (isHost) w.append(el("span", "eyebrow", "Host"));
+  if (me && !editing && !hostJoining) {
+    w.append(el("span", null, me.avatar), el("b", null, me.name));
+    const b = el("button", "link", "Edit"); b.type = "button";
+    b.onclick = () => { if (isHost) hostJoining = true; else editing = true; render(); };
+    w.append(b);
+  }
+  w.hidden = !w.childElementCount;
+}
+
+function renderJoin() {
+  const me = playersById()[myId];
+  $("joinTitle").textContent = me ? "Change your look" : (state.phase === "playing" ? "Jump in — the game's on! 🎡" : "Join the wheel 🎡");
+  $("joinBtn").textContent = me ? "Save" : "I'm in!";
+  $("joinCancel").hidden = !(me || isHost);
+  if (document.activeElement !== $("nameInput") && !$("nameInput").value) $("nameInput").value = (me && me.name) || myName;
+  const box = $("avatars");
+  if (!box.childElementCount) {
+    AVATARS.forEach(a => {
+      const b = el("button", null, a); b.type = "button"; b.setAttribute("aria-label", "Avatar " + a);
+      b.onclick = () => { myAvatar = a; renderJoin(); };
+      box.append(b);
+    });
+  }
+  [...box.children].forEach(b => b.setAttribute("aria-pressed", String(b.textContent === myAvatar)));
+}
+
+function renderLobby() {
+  const ps = state.players;
+  $("joinBox").hidden = !isHost;
+  if (isHost) {
+    const url = location.origin + location.pathname;
+    $("joinUrl").textContent = url.replace(/^https?:\/\//, "");
+    if ($("qr").dataset.url !== url && window.QRCode) {
+      $("qr").replaceChildren(); $("qr").dataset.url = url;
+      new QRCode($("qr"), { text: url, width: 480, height: 480, correctLevel: QRCode.CorrectLevel.M });
+    }
+  }
+  $("lobbyTitle").textContent = isHost ? "Who's in?" : "You're in! 🎉";
+  $("lobbyCount").replaceChildren(el("b", null, String(ps.length)), document.createTextNode(ps.length === 1 ? " player" : " players"));
+  const box = $("people"); box.replaceChildren();
+  if (!ps.length) box.append(el("div", "empty", "Nobody yet… be the first one in! 👀"));
+  ps.forEach(p => {
+    const d = el("div", "person" + (p.id === myId ? " me" : ""));
+    d.append(el("div", "av", p.avatar), el("div", "nm", p.name));
+    if (isHost) {
+      const x = el("button", "x", "×"); x.type = "button"; x.title = "Remove " + p.name; x.setAttribute("aria-label", "Remove " + p.name);
+      x.onclick = () => hostCall("host_wheel_remove", { p_id: p.id });
+      d.append(x);
+    }
+    box.append(d);
+  });
+  $("startRow").hidden = !isHost;
+  $("waitHint").hidden = isHost;
+  $("hostJoin").hidden = meIn();
+  $("startBtn").disabled = !ps.length || busy;
+  $("clearAll").textContent = armed === "clear" ? "Click again to clear" : "Clear everyone";
+}
+
+function renderGame() {
+  const byId = playersById();
+  const spin = activeSpin();
+  const winner = spin ? byId[spin.winner] : null;
+  const pool = (state.pool || []).filter(id => byId[id]);
+  // banner
+  const ban = $("banner"); ban.replaceChildren(); ban.className = "banner";
+  if (wheel.anim) {
+    ban.append(el("div", "big", "Spinning… 🥁"));
+  } else if (spin) {
+    ban.classList.add("land");
+    if (spin.winner === myId) ban.classList.add("mine");
+    const big = el("div", "big");
+    big.append(el("span", "av", winner ? winner.avatar : "❓"), document.createTextNode(" " + (winner ? winner.name : "Someone who left") + "!"));
+    ban.append(big);
+    if (state.open_card != null) ban.append(el("div", "sub", "is answering card " + (state.open_card + 1)));
+    else if (spin.winner === myId) ban.append(el("div", "sub", "It's your turn! Pick a number from 1 to " + QUESTIONS.length + " and say it out loud 🎤"));
+    else ban.append(el("div", "sub", "Pick a number from 1 to " + QUESTIONS.length + "!"));
+  } else {
+    const usedN = Object.keys(state.used || {}).length;
+    ban.append(el("div", "big", usedN ? "Who's next? 👀" : "Ready? 🎡"));
+    const sub = el("div", "sub");
+    if (!state.players.length) sub.textContent = "Nobody's playing yet.";
+    else if (!pool.length) sub.textContent = "Everyone's had a turn! The next spin starts a fresh round.";
+    else { sub.append(el("b", null, String(pool.length))); sub.append(document.createTextNode(pool.length === 1 ? " player still to go" : " players still to go")); }
+    ban.append(sub);
+  }
+  // spin button
+  $("spinBtn").hidden = !isHost;
+  $("spinBtn").disabled = busy || !!wheel.anim || !state.players.length || state.open_card != null;
+  // cards
+  const cards = $("cards");
+  if (cards.childElementCount !== QUESTIONS.length) {
+    cards.replaceChildren();
+    QUESTIONS.forEach((_, i) => {
+      const b = el("button", "card"); b.type = "button";
+      const [c, ink] = cardColor(i); b.style.setProperty("--c", c); b.style.setProperty("--ink", ink);
+      b.onclick = () => clickCard(i);
+      cards.append(b);
+    });
+  }
+  [...cards.children].forEach((b, i) => {
+    const usedBy = state.used ? state.used[String(i)] : undefined;
+    const used = usedBy !== undefined;
+    b.classList.toggle("used", used);
+    b.classList.toggle("host-used", used && isHost);
+    b.disabled = !isHost;
+    b.replaceChildren(el("span", "num", String(i + 1)));
+    if (used && byId[usedBy]) b.append(el("span", "by", byId[usedBy].avatar));
+    b.setAttribute("aria-label", "Card " + (i + 1) + (used ? ", already answered" + (byId[usedBy] ? " by " + byId[usedBy].name : "") : ""));
+    b.title = used && isHost ? "Already answered — click to put it back" : "";
+  });
+  // player chips
+  const chips = $("chips"); chips.replaceChildren();
+  const poolSet = new Set(pool);
+  const cycleFresh = !pool.length;
+  state.players.forEach(p => {
+    const now = spin && spin.winner === p.id;
+    const done = !now && !cycleFresh && !poolSet.has(p.id);
+    const c = el("span", "chip" + (now ? " now" : "") + (done ? " done" : "") + (p.id === myId ? " me" : ""));
+    c.append(el("span", null, p.avatar), el("span", null, p.name));
+    chips.append(c);
+  });
+  // host bar
+  $("hostBar").hidden = !isHost;
+  $("soundBtn").textContent = soundOn ? "🔊 Sound on" : "🔇 Sound off";
+  $("newGameBtn").textContent = armed === "new" ? "Click again: new game" : "New game";
+  $("lobbyBtn").textContent = armed === "lobby" ? "Click again: back to lobby" : "Back to lobby";
+  drawWheel();
+}
+
+let overlayKey = null;
+function renderOverlay() {
+  const open = state && state.phase === "playing" && state.open_card != null && !$("gameSec").hidden;
+  $("overlay").hidden = !open;
+  if (!open) { overlayKey = null; return; }
+  const i = state.open_card;
+  const qi = Array.isArray(state.deck) && state.deck.length > i ? state.deck[i] : i;
+  const key = (state.spin ? state.spin.seq : 0) + ":" + i;
+  const [c, ink] = cardColor(i);
+  const big = $("bigCard");
+  big.style.setProperty("--c", c); big.style.setProperty("--ink", ink);
+  $("bigNum").textContent = "Card " + (i + 1);
+  $("bigQ").textContent = QUESTIONS[qi] || "";
+  big.disabled = !isHost;
+  big.title = isHost ? "Click when they've answered" : "";
+  if (key !== overlayKey) { big.style.animation = "none"; void big.offsetWidth; big.style.animation = ""; overlayKey = key; }
+  const spin = activeSpin();
+  const w = spin ? playersById()[spin.winner] : null;
+  const a = $("answerer"); a.replaceChildren();
+  if (w) a.append(el("span", "av", w.avatar), el("span", null, w.name + (w.id === myId ? " (that's you!)" : "")));
+  a.hidden = !w;
+  $("overlayActions").hidden = !isHost;
+}
+
+/* ---------- wheel ---------- */
+const wheel = { angle: 0, seq: null, anim: null, segs: [] };
+const TAU = Math.PI * 2;
+const mod = (a, m) => ((a % m) + m) % m;
+
+function wheelSegments() {
+  if (wheel.anim) return wheel.anim.segs;
+  const byId = playersById();
+  if (state.phase !== "playing") return state.players;
+  const spin = activeSpin();
+  const ids = spin ? spin.segments : (state.pool || []).filter(id => byId[id]);
+  const list = ids.map(id => byId[id] || { id, name: "—", avatar: "👋" });
+  return list.length ? list : state.players;
+}
+
+function syncWheel() {
+  const seq = state.spin ? state.spin.seq : 0;
+  if (wheel.seq === null) {
+    wheel.seq = seq;
+    const spin = activeSpin();
+    if (spin) { const k = spin.segments.indexOf(spin.winner); if (k >= 0) wheel.angle = -(k + .5) * (TAU / spin.segments.length); }
+    return;
+  }
+  if (seq > wheel.seq && state.spin) {
+    wheel.seq = seq;
+    startSpin(state.spin);
+  } else if (seq < wheel.seq) {
+    wheel.seq = seq; // game was reset
+  }
+}
+
+function startSpin(spin) {
+  const byId = playersById();
+  const segs = spin.segments.map(id => byId[id] || { id, name: "—", avatar: "👋" });
+  const n = segs.length, seg = TAU / n, k = Math.max(0, spin.segments.indexOf(spin.winner));
+  const from = wheel.angle;
+  const desired = -(k + .5 + (Math.random() - .5) * .6) * seg;
+  const to = from + (reduce ? TAU : TAU * 7) + mod(desired - from, TAU);
+  const dur = reduce ? 900 : 5600;
+  const t0 = performance.now();
+  let lastIdx = null;
+  wheel.anim = { segs };
+  render();
+  (function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - t, 4);
+    wheel.angle = from + (to - from) * e;
+    const idx = Math.floor(mod(-wheel.angle, TAU) / seg);
+    if (idx !== lastIdx) { if (lastIdx !== null) tick(); lastIdx = idx; }
+    drawWheel();
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      wheel.angle = mod(wheel.angle, TAU);
+      wheel.anim = null;
+      render();
+      fanfare();
+      if (!reduce) burst();
+    }
+  })(t0);
+}
+
+function drawWheel() {
+  const cv = $("wheel");
+  if (!cv || $("gameSec").hidden) return;
+  const size = cv.clientWidth, dpr = devicePixelRatio || 1;
+  if (!size) return;
+  if (cv.width !== Math.round(size * dpr)) { cv.width = Math.round(size * dpr); cv.height = Math.round(size * dpr); }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
+  const r = size / 2 - 6, cx = size / 2, cy = size / 2;
+  const segs = wheelSegments(), n = segs.length;
+  ctx.save(); ctx.translate(cx, cy);
+  // rim
+  ctx.beginPath(); ctx.arc(0, 0, r + 4, 0, TAU); ctx.fillStyle = "#ffd23f"; ctx.fill();
+  if (!n) {
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fillStyle = "#2c2468"; ctx.fill();
+    ctx.fillStyle = "#b8b0e8"; ctx.font = "700 16px Figtree, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("Waiting for players…", 0, 0);
+    ctx.restore(); return;
+  }
+  const seg = TAU / n;
+  const fs = Math.max(10, Math.min(22, r * .11, seg * r * .42));
+  for (let i = 0; i < n; i++) {
+    const a0 = -Math.PI / 2 + wheel.angle + i * seg;
+    let col = COLORS[i % COLORS.length];
+    if (n > 1 && i === n - 1 && (n - 1) % COLORS.length === 0) col = COLORS[1];
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, a0, a0 + seg); ctx.closePath();
+    ctx.fillStyle = col[0]; ctx.fill();
+    if (n > 1) { ctx.strokeStyle = "rgba(22,17,58,.35)"; ctx.lineWidth = 1.5; ctx.stroke(); }
+    const mid = a0 + seg / 2, flip = n > 1 && Math.cos(mid) < 0; // keep left-side names upright
+    ctx.save(); ctx.rotate(flip ? mid + Math.PI : mid);
+    const sx = flip ? -1 : 1;
+    ctx.fillStyle = col[1]; ctx.textAlign = flip ? "left" : "right"; ctx.textBaseline = "middle";
+    ctx.font = "800 " + fs + "px Figtree, sans-serif";
+    let label = segs[i].name;
+    const maxW = r * .62;
+    while (label.length > 2 && ctx.measureText(label).width > maxW) label = label.slice(0, -1);
+    if (label !== segs[i].name) label = label.slice(0, -1) + "…";
+    ctx.fillText(label, sx * (r - fs * 2.1), 0);
+    ctx.font = (fs * 1.25) + "px sans-serif";
+    ctx.fillText(segs[i].avatar, sx * (r - fs * .45), 0);
+    ctx.restore();
+  }
+  // hub
+  ctx.beginPath(); ctx.arc(0, 0, r * .16, 0, TAU); ctx.fillStyle = "#16113a"; ctx.fill();
+  ctx.lineWidth = 4; ctx.strokeStyle = "#ffd23f"; ctx.stroke();
+  ctx.fillStyle = "#ffd23f"; ctx.font = (r * .14) + "px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("🎡", 0, 1);
+  ctx.restore();
+}
+addEventListener("resize", () => { if (state) drawWheel(); });
+
+/* ---------- sound + confetti ---------- */
+let actx = null;
+function audio() {
+  if (!isHost || !soundOn) return null;
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) { return null; }
+  return actx;
+}
+function blip(freq, at, len, vol, type) {
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type || "square"; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, a.currentTime + at); g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + at + len);
+  o.connect(g).connect(a.destination); o.start(a.currentTime + at); o.stop(a.currentTime + at + len + .02);
+}
+const tick = () => blip(1700, 0, .03, .05);
+const fanfare = () => [523, 659, 784, 1047].forEach((f, i) => blip(f, i * .11, i === 3 ? .5 : .14, .09, "triangle"));
+function burst() {
+  const cv = $("fx"), ctx = cv.getContext("2d"), dpr = devicePixelRatio || 1;
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const colors = COLORS.map(c => c[0]);
+  const box = $("wheel").getBoundingClientRect();
+  const parts = Array.from({ length: 150 }, () => ({ x: box.left + box.width / 2, y: box.top + box.height / 2, vx: (Math.random() - .5) * 16, vy: Math.random() * -14 - 3, s: 5 + Math.random() * 6, r: Math.random() * 6, c: colors[Math.floor(Math.random() * colors.length)] }));
+  let t = 0;
+  (function frame() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of parts) { p.vy += .35; p.x += p.vx; p.y += p.vy; p.r += .1; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); ctx.restore(); }
+    if (++t < 150) requestAnimationFrame(frame); else ctx.clearRect(0, 0, innerWidth, innerHeight);
+  })();
+}
+
+/* ---------- actions ---------- */
+async function hostCall(fn, args) {
+  busy = true; render();
+  const { error } = await sb.rpc(fn, Object.assign({ p_pin: pin }, args || {}));
+  busy = false;
+  if (error) { setNotice(/PIN/i.test(error.message) ? "Wrong host PIN. Reload the page and log in again." : "That didn't work: " + error.message); render(); return false; }
+  setNotice(""); await loadState(); return true;
+}
+function confirm2(key, fn) {
+  if (armed === key) { armed = null; clearTimeout(armTimer); fn(); render(); return; }
+  armed = key; clearTimeout(armTimer); armTimer = setTimeout(() => { armed = null; render(); }, 3500); render();
+}
+function spin() {
+  if (!isHost || busy || wheel.anim || !state || state.phase !== "playing" || state.open_card != null) return;
+  audio();
+  hostCall("host_wheel_spin");
+}
+function clickCard(i) {
+  if (!isHost || busy || wheel.anim || state.open_card != null) return;
+  if (state.used && state.used[String(i)] !== undefined) {
+    if (confirm("Put card " + (i + 1) + " back in play?")) hostCall("host_wheel_unuse", { p_card: i });
+    return;
+  }
+  state.open_card = i; holdUntil = Date.now() + 4000; render(); // instant on the shared screen
+  hostCall("host_wheel_flip", { p_card: i });
+}
+function closeCard(used) {
+  if (!isHost || !state || state.open_card == null) return;
+  const i = state.open_card;
+  if (used) { state.used = Object.assign({}, state.used, { [String(i)]: activeSpin() ? activeSpin().winner : null }); if (state.spin) state.spin = Object.assign({}, state.spin, { done: true }); }
+  state.open_card = null; holdUntil = Date.now() + 4000; render();
+  hostCall("host_wheel_close", { p_used: used });
+}
+
+$("joinSec").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("nameInput").value.trim();
+  if (!name) { setNotice("Add your first name first 🙂"); $("nameInput").focus(); return; }
+  $("joinBtn").disabled = true;
+  const { error } = await sb.rpc("wheel_join", { p_id: myId, p_name: name, p_avatar: myAvatar });
+  $("joinBtn").disabled = false;
+  if (error) { setNotice(/full/i.test(error.message) ? "The game is full." : "Couldn't join: " + error.message); return; }
+  myName = name; store.set("iw.name", name); store.set("iw.avatar", myAvatar);
+  editing = false; hostJoining = false; setNotice("");
+  await loadState();
+});
+$("joinCancel").onclick = () => { editing = false; hostJoining = false; render(); };
+$("pinSec").addEventListener("submit", async e => {
+  e.preventDefault();
+  const p = $("pinInput").value;
+  const { data, error } = await sb.rpc("host_check", { p_pin: p });
+  if (error || !data) { setNotice("That PIN isn't right."); return; }
+  pin = p; store.sset("iw.pin", p); isHost = true; setNotice(""); render();
+});
+$("startBtn").onclick = () => hostCall("host_wheel_start", { p_cards: QUESTIONS.length });
+$("hostJoin").onclick = () => { hostJoining = true; render(); };
+$("clearAll").onclick = () => confirm2("clear", () => hostCall("host_wheel_reset", { p_clear_players: true }));
+$("spinBtn").onclick = spin;
+$("bigCard").onclick = () => closeCard(true);
+$("doneBtn").onclick = () => closeCard(true);
+$("backBtn").onclick = () => closeCard(false);
+$("soundBtn").onclick = () => { soundOn = !soundOn; store.set("iw.sound", soundOn ? "on" : "off"); render(); };
+$("newGameBtn").onclick = () => confirm2("new", () => hostCall("host_wheel_start", { p_cards: QUESTIONS.length }));
+$("lobbyBtn").onclick = () => confirm2("lobby", () => hostCall("host_wheel_reset", { p_clear_players: false }));
+addEventListener("keydown", e => {
+  if (!isHost || !state || state.phase !== "playing") return;
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  if (state.open_card != null && (e.key === "Escape" || e.key === "Enter")) { e.preventDefault(); closeCard(true); }
+  else if (state.open_card == null && e.code === "Space") { e.preventDefault(); spin(); }
+});
+addEventListener("hashchange", render);
+
+(async function boot() {
+  if (pin) { const { data } = await sb.rpc("host_check", { p_pin: pin }); isHost = !!data && wantsHost(); }
+  await loadState();
+  sb.channel("wheel_state").on("postgres_changes", { event: "*", schema: "public", table: "wheel_state" }, p => { if (p.new && p.new.id === 1) applyState(p.new); }).subscribe();
+  setInterval(loadState, POLL_MS);
+})();
+</script>
+</body>
+</html>
