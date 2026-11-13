@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Discovery Detective</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Figtree:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: noir case board, live. Host (#host) = shared screen: lobby -> roles + case board -> case (quote, timer, 3 keys, reveal).
+   Players' phones: join -> role card; the client's phone becomes the secret brief with tap-to-reveal golden questions. */
+:root {
+  --bg: #12100e; --surface: #1d1915; --surface-2: #2a241d; --fg: #f3ead8; --muted: #b3a68c; --line: #3d342a;
+  --paper: #efe3c8; --paper-ink: #2b2218; --accent: #f2b33d; --accent-ink: #1b1408; --red: #d9483b; --ok: #6fd39a; --blue: #7fb2ff;
+  --font-type: "Special Elite", "Courier New", monospace;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100vh; color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.45;
+  background: radial-gradient(900px 600px at 50% -10%, #3a2c1a 0%, transparent 65%), var(--bg);
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-left, 0px)) 40px max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+.wrap > * { min-width: 0; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-type); font-weight: 400; font-size: clamp(28px, 4vw, 46px); line-height: 1; margin: 4px 0 0; }
+h1 span, .accent { color: var(--accent); }
+h2 { font-family: var(--font-type); font-weight: 400; font-size: clamp(22px, 3vw, 30px); line-height: 1.15; margin: 0; }
+.who { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--muted); }
+.who b { color: var(--fg); }
+.link { background: none; border: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; padding: 0; font-weight: 700; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+.btn { border: 1px solid var(--line); border-radius: 10px; padding: 10px 18px; font-weight: 800; background: var(--surface-2); transition: filter .12s, transform .12s; }
+.btn:hover { filter: brightness(1.15); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.big { font-family: var(--font-type); font-weight: 400; font-size: clamp(20px, 2.4vw, 26px); padding: 14px 30px; }
+.btn.small { padding: 6px 12px; font-size: 13px; }
+.btn.danger { color: var(--red); }
+.notice { color: var(--red); font-weight: 700; text-align: center; }
+.notice:empty { display: none; }
+.hint { color: var(--muted); font-size: 14px; }
+.kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+
+/* Join / PIN */
+.join { max-width: 560px; width: 100%; margin: 3vh auto 0; display: grid; gap: 18px; }
+.join label { font-weight: 700; display: block; margin-bottom: 8px; }
+.join input[type=text], .pin input { width: 100%; font: inherit; font-size: 20px; font-weight: 700; padding: 14px 16px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--fg); outline: none; }
+.join input:focus, .pin input:focus { border-color: var(--accent); }
+.avatars { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 8px; }
+.avatars button { aspect-ratio: 1; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); font-size: 26px; line-height: 1; display: grid; place-items: center; }
+.avatars button[aria-pressed=true] { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 22%, var(--bg)); transform: scale(1.08); }
+.pin { max-width: 380px; margin: 10vh auto 0; display: grid; gap: 14px; text-align: center; }
+
+/* Lobby */
+.lobby { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); align-items: start; }
+.joinbox { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.joinurl { font-family: var(--font-mono); font-weight: 700; font-size: clamp(13px, 1.5vw, 18px); color: var(--accent); word-break: break-all; }
+#qr { background: #fff; padding: 12px; border-radius: 14px; line-height: 0; }
+#qr img, #qr canvas { width: min(230px, 60vw) !important; height: auto !important; }
+.count { font-family: var(--font-mono); color: var(--muted); }
+.count b { color: var(--accent); font-size: 22px; }
+.people { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin-top: 14px; }
+.person { position: relative; display: grid; justify-items: center; gap: 4px; padding: 12px 6px 10px; border-radius: 12px; background: var(--paper); color: var(--paper-ink); animation: pop .45s cubic-bezier(.2,1.6,.4,1) both; }
+.person .av { font-size: 34px; line-height: 1; }
+.person .nm { font-family: var(--font-type); font-size: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person.me { outline: 3px solid var(--accent); }
+.person .x { position: absolute; top: 2px; right: 4px; border: 0; background: none; color: var(--paper-ink); opacity: 0; font-size: 18px; }
+.person:hover .x, .person .x:focus-visible { opacity: .7; }
+.empty { color: var(--muted); text-align: center; padding: 30px 10px; }
+.startrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 18px; }
+@keyframes pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Roles */
+.roles { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: stretch; }
+.role { border-radius: 14px; padding: 14px 18px; display: grid; gap: 2px; align-content: center; background: var(--surface); border: 2px solid var(--line); min-height: 92px; }
+.role .lbl { font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+.role.client .lbl { color: var(--red); }
+.role.ba .lbl { color: var(--blue); }
+.role .nm { font-family: var(--font-type); font-size: clamp(22px, 3vw, 34px); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role .nm .av { font-size: 1.15em; }
+.role.spinning .nm { opacity: .75; filter: blur(.4px); }
+.role.landed { animation: land .5s cubic-bezier(.2,1.6,.4,1); }
+.role.client.landed, .role.client.set { border-color: var(--red); }
+.role.ba.landed, .role.ba.set { border-color: var(--blue); }
+@keyframes land { 0% { transform: scale(.9); } 100% { transform: scale(1); } }
+.vs { align-self: center; font-family: var(--font-type); font-size: 22px; color: var(--muted); }
+.rolebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; }
+
+/* Board */
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; padding-top: 14px; }
+.file { position: relative; text-align: left; border: 0; border-radius: 4px 14px 14px 14px; padding: 24px 20px 20px; min-height: 180px; background: var(--paper); color: var(--paper-ink); box-shadow: 0 10px 24px rgba(0,0,0,.45); display: grid; gap: 8px; align-content: start; transform: rotate(var(--tilt)); transition: transform .18s ease, box-shadow .18s ease; }
+.file::before { content: ""; position: absolute; top: -14px; left: 0; width: 42%; height: 16px; border-radius: 8px 8px 0 0; background: var(--paper); }
+.file:not(:disabled):hover { transform: rotate(0) translateY(-4px) scale(1.02); box-shadow: 0 16px 30px rgba(0,0,0,.55); }
+.file:disabled { cursor: default; }
+.file .no { font-family: var(--font-type); font-size: 15px; opacity: .7; }
+.file .emo { font-size: 38px; line-height: 1; }
+.file .fw { font-family: var(--font-type); font-size: 20px; }
+.file .stamp { position: absolute; right: 16px; bottom: 16px; transform: rotate(-12deg); border: 3px solid var(--red); color: var(--red); font-family: var(--font-type); font-size: 19px; padding: 2px 10px; border-radius: 6px; background: rgba(239,227,200,.6); }
+.file.solved { filter: saturate(.6); }
+.file.solved .stamp { border-color: #2f7a4a; color: #2f7a4a; }
+
+/* Case */
+.case { display: grid; gap: 18px; }
+.casehead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.quote { background: var(--paper); color: var(--paper-ink); border-radius: 14px; padding: clamp(20px, 3.5vw, 40px); box-shadow: 0 14px 30px rgba(0,0,0,.5); display: grid; gap: 8px; animation: drop .5s cubic-bezier(.2,1.3,.4,1) both; }
+.quote .qw { font-family: var(--font-type); font-size: 18px; opacity: .8; }
+.quote .q { font-family: var(--font-type); font-size: clamp(28px, 4.4vw, 54px); line-height: 1.12; }
+@keyframes drop { from { transform: translateY(-30px) rotate(-2deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: center; }
+.timer { display: grid; justify-items: center; gap: 10px; }
+.clock { font-family: var(--font-mono); font-weight: 700; font-size: clamp(42px, 6vw, 70px); line-height: 1; color: var(--accent); }
+.clock.low { color: var(--red); animation: pulse 1s infinite; }
+.clock.over { color: var(--red); font-size: clamp(26px, 3vw, 36px); }
+@keyframes pulse { 50% { opacity: .5; } }
+.tbtns { display: flex; gap: 8px; }
+.keys { display: grid; gap: 12px; }
+.key { display: flex; align-items: center; gap: 14px; text-align: left; border: 2px dashed var(--line); border-radius: 12px; padding: 14px 18px; background: var(--surface); font-size: clamp(16px, 1.7vw, 21px); font-weight: 700; color: var(--muted); width: 100%; }
+.key:disabled { cursor: default; }
+.key .ic { font-size: 26px; filter: grayscale(1) opacity(.5); }
+.key .k { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin-left: auto; }
+.key.found { border-style: solid; border-color: var(--accent); background: color-mix(in oklab, var(--accent) 16%, var(--surface)); color: var(--fg); animation: glow .6s ease; }
+.key.found .ic { filter: none; }
+.key.missed { border-color: var(--red); color: var(--fg); opacity: .8; }
+@keyframes glow { 0% { box-shadow: 0 0 0 0 rgba(242,179,61,.8); } 100% { box-shadow: 0 0 0 18px rgba(242,179,61,0); } }
+.truth { border-radius: 14px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--accent); display: grid; gap: 12px; animation: drop .5s cubic-bezier(.2,1.3,.4,1) both; }
+.truth h3 { margin: 0; font-family: var(--font-type); font-weight: 400; font-size: 26px; color: var(--accent); }
+.truth p { margin: 0; font-size: clamp(16px, 1.6vw, 20px); }
+.lbl2 { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 2px; }
+.rating { font-size: 30px; letter-spacing: 4px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 700; font-size: 14px; }
+.chip.done { opacity: .45; }
+.chip.done::after { content: "✓"; color: var(--ok); }
+.chip.client { background: var(--red); border-color: transparent; color: #fff; }
+.chip.ba { background: var(--blue); border-color: transparent; color: #0b1a33; }
+.hostbar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; color: var(--muted); font-size: 13px; }
+
+/* Phone views */
+.phone { max-width: 600px; width: 100%; margin: 0 auto; display: grid; gap: 16px; }
+.badge { border-radius: 16px; padding: 18px 20px; display: grid; gap: 4px; text-align: center; }
+.badge .big { font-family: var(--font-type); font-size: clamp(26px, 7vw, 36px); line-height: 1.1; }
+.badge.client { background: var(--red); color: #fff; }
+.badge.ba { background: var(--blue); color: #0b1a33; }
+.badge.aud { background: var(--surface-2); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; display: grid; gap: 10px; }
+.card h3 { margin: 0; font-size: 13px; font-family: var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+.card ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 17px; }
+.secret { color: var(--red); font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; }
+.opening { font-family: var(--font-type); font-size: clamp(22px, 6vw, 28px); line-height: 1.2; }
+.tapkey { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; text-align: left; border: 2px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--bg); font-size: 17px; font-weight: 700; }
+.tapkey .act { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.tapkey.on { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 18%, var(--bg)); }
+.tapkey.on .act { color: var(--accent); }
+.tapkey:disabled { cursor: default; }
+.wait { text-align: center; padding: 26px 10px; color: var(--muted); font-size: 17px; }
+.wait .big { font-size: 46px; display: block; margin-bottom: 6px; }
+
+.phone .roles { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.phone .vs { display: none; }
+.phone .role { min-height: 0; padding: 10px 12px; }
+.phone .role .lbl { font-size: 10px; }
+.phone .role .nm { font-size: 19px; }
+@media (max-width: 860px) {
+  .lobby { grid-template-columns: minmax(0, 1fr); }
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .row, .rolebar { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Insights Weekly · Requirements unit</div>
+      <h1>🔍 Discovery <span>Detective</span></h1>
+    </div>
+    <div class="who" id="who" hidden></div>
+  </header>
+
+  <div class="notice" id="notice" role="status"></div>
+
+  <!-- Host PIN -->
+  <form class="panel pin" id="pinSec" hidden>
+    <h2>Host login</h2>
+    <input id="pinInput" type="password" autocomplete="off" placeholder="Host PIN" aria-label="Host PIN">
+    <button class="btn primary" type="submit">Enter</button>
+  </form>
+
+  <!-- Join -->
+  <form class="panel join" id="joinSec" hidden>
+    <div>
+      <h2 id="joinTitle">Join the investigation 🔍</h2>
+      <div class="hint">Add your first name and pick an avatar. You might be picked as the client… or the detective.</div>
+    </div>
+    <div>
+      <label for="nameInput">Your name</label>
+      <input id="nameInput" type="text" maxlength="20" autocomplete="given-name" placeholder="First name only, please">
+    </div>
+    <div>
+      <label>Your avatar</label>
+      <div class="avatars" id="avatars"></div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <button class="btn primary big" type="submit" id="joinBtn">I'm in!</button>
+      <button class="link" type="button" id="joinCancel" hidden>Cancel</button>
+    </div>
+  </form>
+
+  <!-- Lobby -->
+  <section class="lobby" id="lobbySec" hidden>
+    <div class="panel joinbox" id="joinBox">
+      <h2>Grab your phone 📱</h2>
+      <div id="qr"></div>
+      <div class="joinurl" id="joinUrl"></div>
+      <div class="hint">Scan or open the link, add your first name, pick an avatar.</div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <h2 id="lobbyTitle">Who's on the case?</h2>
+        <div class="count" id="lobbyCount"></div>
+      </div>
+      <div class="people" id="people"></div>
+      <div class="startrow" id="startRow" hidden>
+        <button class="btn small danger" type="button" id="clearAll">Clear everyone</button>
+        <button class="btn primary big" type="button" id="startBtn">Start the game ▶</button>
+      </div>
+      <div class="wait" id="waitHint" hidden><span class="big">🕵️</span>Waiting for João to start the game…</div>
+    </div>
+  </section>
+
+  <!-- Host: shared screen -->
+  <section id="hostGame" style="display:grid;gap:20px" hidden>
+    <div class="rolebar">
+      <div class="roles" id="hRoles"></div>
+      <button class="btn primary big" type="button" id="pickBtn">🎲 Pick roles</button>
+    </div>
+
+    <div id="hBoard" style="display:grid;gap:10px">
+      <p class="hint" id="boardHint" style="margin:0;font-size:17px"></p>
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="case" id="hCase" hidden>
+      <div class="casehead">
+        <div class="eyebrow" id="caseNo"></div>
+        <button class="btn small" type="button" id="backBtn">← Case board</button>
+      </div>
+      <div class="quote" id="quote"><div class="qw" id="qWho"></div><div class="q" id="qText"></div></div>
+      <div class="row">
+        <div class="timer">
+          <div class="clock" id="clock">3:00</div>
+          <div class="tbtns">
+            <button class="btn primary" type="button" id="timerBtn">Start</button>
+            <button class="btn" type="button" id="timerReset">Reset</button>
+          </div>
+        </div>
+        <div class="keys" id="keys"></div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" type="button" id="revealBtn">🔎 Reveal the truth</button>
+        <button class="btn" type="button" id="nextBtn" hidden>🎲 Next round: new roles</button>
+      </div>
+      <div class="truth" id="truth" hidden></div>
+    </div>
+
+    <div class="chips" id="chips"></div>
+    <div class="hostbar">
+      <span><span class="kbd">Space</span> timer · <span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span> golden questions · <span class="kbd">R</span> reveal · <span class="kbd">Esc</span> case board</span>
+      <button class="btn small" type="button" id="soundBtn"></button>
+      <button class="btn small" type="button" id="newGameBtn">New game</button>
+      <button class="btn small" type="button" id="lobbyBtn">Back to lobby</button>
+    </div>
+  </section>
+
+  <!-- Players' phones -->
+  <section class="phone" id="phoneGame" hidden>
+    <div class="roles" id="pRoles"></div>
+    <div id="pBody" style="display:grid;gap:16px"></div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://icqnqhnzbcbaicjpwdxs.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljcW5xaG56YmNiYWljanB3ZHhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NjMzMTIsImV4cCI6MjEwODMzOTMxMn0.fIp4n-xeN-EbtBHTvrt_-L2aMLq0QWoNcDRf2X-Rs6w";
+const POLL_MS = 3000;
+const DUR = 180;
+
+const CASES = [
+  { emo: "📊", who: "Head of Sales", q: "We want a dashboard for everything.",
+    facts: [
+      "Every Sunday I spend about three hours in Excel merging reports for Monday's pipeline meeting.",
+      "My eight reps don't update close dates, so half the pipeline is fiction.",
+      "I present the forecast to the CEO on the first Monday of each month.",
+      "I look at it on my laptop before meetings; the reps would check it on their phones.",
+      "If asked what 'everything' means: \"Well… the pipeline, mostly. And who's behind.\""
+    ],
+    keys: ["What decision will you make with it?", "What do you do today to get this information?", "Who will look at it, and how often?"],
+    need: "A pipeline she can trust for Monday's meeting, without three hours in Excel every Sunday.",
+    solution: "One pipeline dashboard by rep and stage, a \"stale opportunities\" report (no update in 14 days), and a reminder when close dates are overdue. Goodbye, Sunday spreadsheet." },
+  { emo: "🤖", who: "COO, just back from a conference", q: "We need AI in Salesforce.",
+    facts: [
+      "Our support team takes about two days to reply to customer emails.",
+      "One person reads every incoming email and assigns it by hand. When she's on holiday, everything stops.",
+      "About 120 emails a day — mostly invoices, password resets and delivery dates.",
+      "Customers complain about slow answers in our online reviews.",
+      "Success for me: every customer gets a reply within 4 hours."
+    ],
+    keys: ["What problem would AI solve for you?", "Where does the team lose the most time?", "What would success look like, in numbers?"],
+    need: "Faster replies to customers — the bottleneck is one person sorting every email by hand.",
+    solution: "Email-to-Case with automatic routing by topic (assignment rules or Omni-Channel) and quick-reply templates for the top three topics. AI classification as phase two, once the basics work." },
+  { emo: "➕", who: "Operations Manager", q: "Can you just add a field?",
+    facts: [
+      "Some deals come from partners who introduce clients to us.",
+      "We pay them a 5% referral commission every quarter.",
+      "Today sales writes the partner's name on a sticky note or in an email to finance.",
+      "Last quarter we paid one partner twice and forgot another one completely.",
+      "Finance needs a list per partner at the end of every quarter."
+    ],
+    keys: ["What will you do with that information?", "Who fills it in, and when?", "Does it need to be reported on or paid out?"],
+    need: "Reliable referral commissions — every partner paid once, correctly, every quarter.",
+    solution: "A lookup to the partner's Account on the Opportunity (not free text), required when the source is a partner referral, plus a quarterly commission report per partner and a \"paid\" flag." },
+  { emo: "😤", who: "Sales Director", q: "Our users hate Salesforce.",
+    facts: [
+      "It started last quarter, after we added new required fields for a reporting project.",
+      "Creating an opportunity now needs 25 required fields.",
+      "Reps are out in the field, on their phones, between client visits.",
+      "So they log all their deals on Friday afternoon… or never.",
+      "Before that, people were fine with it."
+    ],
+    keys: ["Who exactly, and what were they trying to do?", "When did it start?", "Can I watch a user do it?"],
+    need: "A fast way for reps to log deals from their phones — not a new system.",
+    solution: "Keep only the fields truly needed at creation (ask the rest at later stages), add a 5-field mobile quick action and Dynamic Forms, and test it with two real reps." },
+  { emo: "🔌", who: "Finance Lead", q: "We need an integration with our ERP.",
+    facts: [
+      "Every week we retype about forty closed-won orders into our ERP.",
+      "Typos in product codes cause a wrong invoice almost every week.",
+      "Data only needs to go from Salesforce to the ERP, never back.",
+      "Once a day would be perfectly fine.",
+      "Our ERP can already import a CSV file."
+    ],
+    keys: ["What data, and in which direction?", "How often, and how many records?", "What goes wrong today?"],
+    need: "Stop retyping orders and stop the invoice errors.",
+    solution: "A daily one-way export of closed-won orders that the ERP imports, with product codes standardised in Salesforce. A real-time API integration only if volumes grow." },
+  { emo: "📬", who: "Membership Manager", q: "We want automatic emails to our members.",
+    facts: [
+      "Memberships renew once a year, on the date the member joined.",
+      "Reminders are sent by hand from Outlook, whenever someone remembers.",
+      "About 15% of members don't renew each year, and many say \"I forgot\".",
+      "Members who already paid sometimes still get reminders — embarrassing.",
+      "We'd love to send a thank-you email after someone renews."
+    ],
+    keys: ["Who gets them, and what triggers them?", "How do you do it today?", "What should happen after someone renews?"],
+    need: "Fewer lapsed members — renewals that don't depend on someone remembering.",
+    solution: "An automated renewal journey: reminders 60, 30 and 7 days before expiry that stop as soon as the member pays, a thank-you email on renewal, and a lapsed-members report for a personal call." }
+];
+const RATING = ["Back to detective school!", "Good start, detective.", "Sharp work!", "Sherlock-level discovery! 🎩"];
+const AVATARS = ["🕵️","🦊","🐼","🐸","🦁","🐯","🐨","🐵","🦄","🐙","🦉","🐧","🐢","🦖","🐝","🦋","🐳","🐶","🐱","🐰","🦔","🦥","🐲","👽","🤖","🧙","🦸","🥷","👻","🍕","🌮","🍩","☕","🌵","🚀","🎸","⚽","🎮","🎩","🔦"];
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  sget(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+  sset(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+};
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+let myId = store.get("dd.id");
+if (!myId) { myId = newId(); store.set("dd.id", myId); }
+let myName = store.get("dd.name") || store.get("iw.name") || "";
+let myAvatar = store.get("dd.avatar") || "🕵️";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let state = null;
+let pin = store.sget("dd.pin"), isHost = false;
+let editing = false, busy = false;
+let armed = null, armTimer = null;
+let soundOn = store.get("dd.sound") !== "off";
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const setNotice = t => { $("notice").textContent = t || ""; };
+const wantsHost = () => location.hash.replace("#", "").toLowerCase() === "host";
+const byId = () => Object.fromEntries((state ? state.players : []).map(p => [p.id, p]));
+const meIn = () => !!state && state.players.some(p => p.id === myId);
+const round = () => (state && state.round) || null;
+const caseIdx = () => { const r = round(); return r && typeof r.case === "number" ? r.case : null; };
+const found = () => new Set(((round() || {}).found) || []);
+const pad = i => String(i + 1).padStart(3, "0");
+const nameOf = id => { const p = byId()[id]; return p ? p.avatar + " " + p.name : "👋 Someone who left"; };
+
+/* ---------- state ---------- */
+async function loadState() {
+  const { data, error } = await sb.from("dd_state").select("*").eq("id", 1).maybeSingle();
+  if (error) { setNotice("Can't reach the game right now. Retrying…"); return; }
+  if (data) applyState(data);
+}
+let holdUntil = 0; // after an instant (optimistic) action, ignore stale copies until the server catches up
+function applyState(s) {
+  if (!s) return;
+  if (state && Date.now() < holdUntil && Date.parse(s.updated_at) <= Date.parse(state.updated_at)) return;
+  if (state && Date.parse(s.updated_at) < Date.parse(state.updated_at)) return;
+  const prev = state;
+  state = s;
+  if ($("notice").textContent.startsWith("Can't reach")) setNotice("");
+  reactToChange(prev, s);
+  render();
+}
+// sounds + shuffle when something new happens
+let seenSeq = null, lastCase = null;
+function reactToChange(prev, s) {
+  const r = s.round, seq = r ? r.seq : 0;
+  if (seenSeq === null) { seenSeq = seq; lastCase = caseIdx(); return; }
+  if (seq > seenSeq) { seenSeq = seq; startShuffle(); }
+  else if (seq < seenSeq) seenSeq = seq;
+  const c = caseIdx();
+  if (c !== lastCase) { lastCase = c; if (c != null && !isHost) navigator.vibrate && navigator.vibrate(60); return; }
+  if (!prev || !prev.round || !r || prev.round.seq !== r.seq || c == null) return;
+  const before = new Set(prev.round.found || []);
+  (r.found || []).forEach(k => { if (!before.has(k)) { chime(660 + k * 110); } });
+  if (r.revealed && !prev.round.revealed) { chime(523); setTimeout(() => chime(784), 140); }
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  if (!state) return;
+  const needPin = wantsHost() && !isHost;
+  const showJoin = !needPin && !isHost && (!meIn() || editing);
+  $("pinSec").hidden = !needPin;
+  $("joinSec").hidden = !showJoin;
+  $("lobbySec").hidden = needPin || showJoin || state.phase !== "lobby" || (!isHost && !meIn());
+  $("hostGame").hidden = !isHost || state.phase !== "playing";
+  $("phoneGame").hidden = isHost || needPin || showJoin || state.phase !== "playing";
+  renderWho();
+  if (showJoin) renderJoin();
+  if (!$("lobbySec").hidden) renderLobby();
+  if (!$("hostGame").hidden) renderHost();
+  if (!$("phoneGame").hidden) renderPhone();
+}
+
+function renderWho() {
+  const w = $("who"); w.replaceChildren();
+  const me = byId()[myId];
+  if (isHost) w.append(el("span", "eyebrow", "Host · shared screen"));
+  else if (me && !editing) {
+    w.append(el("span", null, me.avatar), el("b", null, me.name));
+    const b = el("button", "link", "Edit"); b.type = "button";
+    b.onclick = () => { editing = true; render(); };
+    w.append(b);
+  }
+  w.hidden = !w.childElementCount;
+}
+
+function renderJoin() {
+  const me = byId()[myId];
+  $("joinTitle").textContent = me ? "Change your look" : (state.phase === "playing" ? "Jump in — the game's on! 🔍" : "Join the investigation 🔍");
+  $("joinBtn").textContent = me ? "Save" : "I'm in!";
+  $("joinCancel").hidden = !me;
+  if (document.activeElement !== $("nameInput") && !$("nameInput").value) $("nameInput").value = (me && me.name) || myName;
+  const box = $("avatars");
+  if (!box.childElementCount) {
+    AVATARS.forEach(a => {
+      const b = el("button", null, a); b.type = "button"; b.setAttribute("aria-label", "Avatar " + a);
+      b.onclick = () => { myAvatar = a; renderJoin(); };
+      box.append(b);
+    });
+  }
+  [...box.children].forEach(b => b.setAttribute("aria-pressed", String(b.textContent === myAvatar)));
+}
+
+function renderLobby() {
+  const ps = state.players;
+  $("joinBox").hidden = !isHost;
+  if (isHost) {
+    const url = location.origin + location.pathname;
+    $("joinUrl").textContent = url.replace(/^https?:\/\//, "");
+    if ($("qr").dataset.url !== url && window.QRCode) {
+      $("qr").replaceChildren(); $("qr").dataset.url = url;
+      new QRCode($("qr"), { text: url, width: 480, height: 480, correctLevel: QRCode.CorrectLevel.M });
+    }
+  }
+  $("lobbyTitle").textContent = isHost ? "Who's on the case?" : "You're in! 🎉";
+  $("lobbyCount").replaceChildren(el("b", null, String(ps.length)), document.createTextNode(ps.length === 1 ? " detective" : " detectives"));
+  const box = $("people"); box.replaceChildren();
+  if (!ps.length) box.append(el("div", "empty", "Nobody yet… be the first one in! 👀"));
+  ps.forEach(p => {
+    const d = el("div", "person" + (p.id === myId ? " me" : ""));
+    d.append(el("div", "av", p.avatar), el("div", "nm", p.name));
+    if (isHost) {
+      const x = el("button", "x", "×"); x.type = "button"; x.setAttribute("aria-label", "Remove " + p.name);
+      x.onclick = () => hostCall("host_dd_remove", { p_id: p.id });
+      d.append(x);
+    }
+    box.append(d);
+  });
+  $("startRow").hidden = !isHost;
+  $("waitHint").hidden = isHost;
+  $("startBtn").disabled = ps.length < 2 || busy;
+  $("startBtn").title = ps.length < 2 ? "You need at least 2 players" : "";
+  $("clearAll").textContent = armed === "clear" ? "Click again to clear" : "Clear everyone";
+}
+
+/* roles (shared by host + phones) */
+function renderRoles(box) {
+  const r = round();
+  box.replaceChildren();
+  const mk = (cls, label, id) => {
+    const d = el("div", "role " + cls + (r && !shuffle ? " set" : "")); d.dataset.slot = cls;
+    const nm = el("div", "nm");
+    nm.textContent = !r ? "?" : shuffle ? shuffle.show[cls] : nameOf(id);
+    d.append(el("div", "lbl", label), nm);
+    return d;
+  };
+  box.append(mk("client", "🎭 The client", r && r.client), el("div", "vs", "vs"), mk("ba", "🕵️ The detective", r && r.ba));
+}
+
+function renderHost() {
+  const r = round(), c = caseIdx();
+  renderRoles($("hRoles"));
+  $("pickBtn").textContent = r ? "🎲 New roles" : "🎲 Pick roles";
+  $("pickBtn").disabled = busy || !!shuffle || state.players.length < 2;
+  $("pickBtn").hidden = c != null;
+  $("hBoard").hidden = c != null;
+  $("hCase").hidden = c == null;
+  if (c == null) renderBoard(); else renderCase();
+  // chips
+  const chips = $("chips"); chips.replaceChildren();
+  const pool = new Set(state.pool || []);
+  const fresh = !(state.pool || []).some(id => byId()[id]);
+  state.players.forEach(p => {
+    const role = r && !shuffle ? (p.id === r.client ? " client" : p.id === r.ba ? " ba" : "") : "";
+    const done = !role && !fresh && !pool.has(p.id);
+    const ch = el("span", "chip" + role + (done ? " done" : ""));
+    ch.append(el("span", null, p.avatar), el("span", null, p.name));
+    chips.append(ch);
+  });
+  $("soundBtn").textContent = soundOn ? "🔊 Sound on" : "🔇 Sound off";
+  $("newGameBtn").textContent = armed === "new" ? "Click again: all cases open" : "New game";
+  $("lobbyBtn").textContent = armed === "lobby" ? "Click again: back to lobby" : "Back to lobby";
+}
+
+function renderBoard() {
+  const r = round();
+  $("boardHint").textContent = state.players.length < 2 ? "You need at least 2 players to play."
+    : !r ? "Pick the roles first: one client, one detective. Everyone else helps the detective with ideas in the chat 💬"
+    : shuffle ? "Shuffling…" : "Pick a case file for the client.";
+  const b = $("board"); b.replaceChildren();
+  CASES.forEach((cs, i) => {
+    const f = el("button", "file"); f.type = "button";
+    f.style.setProperty("--tilt", ((i % 3) - 1) * 1.2 + "deg");
+    f.append(el("div", "no", "CASE FILE #" + pad(i)), el("div", "emo", cs.emo), el("div", "fw", cs.who));
+    const s = state.solved ? state.solved[String(i)] : undefined;
+    if (s) { f.classList.add("solved"); f.append(el("div", "stamp", "SOLVED " + (s.length ? "🔍".repeat(s.length) : "—"))); }
+    else f.append(el("div", "stamp", "OPEN"));
+    f.disabled = !r || !!shuffle || busy;
+    f.onclick = () => openCase(i);
+    b.append(f);
+  });
+}
+
+let quoteKey = null;
+function renderCase() {
+  const r = round(), c = caseIdx(), cs = CASES[c], f = found();
+  $("caseNo").textContent = "Case file #" + pad(c);
+  $("qWho").textContent = cs.emo + "  " + cs.who + " (played by " + nameOf(r.client).replace(/^\S+ /, "") + ") says:";
+  $("qText").textContent = "“" + cs.q + "”";
+  const qk = r.seq + ":" + c;
+  if (qk !== quoteKey) { const qb = $("quote"); qb.style.animation = "none"; void qb.offsetWidth; qb.style.animation = ""; quoteKey = qk; resetTimer(); }
+  const ks = $("keys"); ks.replaceChildren();
+  cs.keys.forEach((k, j) => {
+    const b = el("button", "key" + (f.has(j) ? " found" : r.revealed ? " missed" : "")); b.type = "button";
+    b.append(el("span", "ic", "🔑"), el("span", null, f.has(j) || r.revealed ? k : "Golden question #" + (j + 1) + " — still hidden…"), el("span", "k", String(j + 1)));
+    b.title = "The client lights these up from their phone. Click to do it for them.";
+    b.onclick = () => toggleKey(j);
+    ks.append(b);
+  });
+  $("revealBtn").hidden = !!r.revealed;
+  $("nextBtn").hidden = !r.revealed;
+  const t = $("truth"); t.hidden = !r.revealed;
+  if (r.revealed) {
+    t.replaceChildren(truthBits(cs, f.size));
+    if (ticking) stopTimer();
+  }
+}
+function truthBits(cs, n) {
+  const frag = document.createDocumentFragment();
+  frag.append(el("h3", null, "🗂️ Case closed"));
+  const rt = el("p"); rt.append(el("span", "lbl2", "Detective rating"), el("span", "rating", n ? "🔍".repeat(n) : "🫣"), document.createTextNode("  " + RATING[n]));
+  const need = el("p"); need.append(el("span", "lbl2", "What they really needed"), document.createTextNode(cs.need));
+  const sol = el("p"); sol.append(el("span", "lbl2", "A good solution"), document.createTextNode(cs.solution));
+  frag.append(rt, need, sol);
+  return frag;
+}
+
+function renderPhone() {
+  renderRoles($("pRoles"));
+  const r = round(), c = caseIdx(), body = $("pBody");
+  body.replaceChildren();
+  const myRole = !r || shuffle ? null : r.client === myId ? "client" : r.ba === myId ? "ba" : "aud";
+  if (!r || shuffle) {
+    body.append(waitBox(shuffle ? "🎲" : "👀", shuffle ? "Shuffling the roles… is it you?" : "João is about to pick the client and the detective. Could be you…"));
+    return;
+  }
+  if (myRole === "client") return renderClient(body, r, c);
+  const badge = el("div", "badge " + myRole);
+  if (myRole === "ba") {
+    badge.append(el("div", "big", "🕵️ You're the detective!"),
+      el("div", null, "Ask " + nameOf(r.client).replace(/^\S+ /, "") + " questions to find out what they really need. You've got 3 minutes. The others can help you in the chat."));
+  } else {
+    badge.append(el("div", "big", "🍿 You're on the jury"), el("div", null, "Watch João's screen. Help the detective with question ideas in the chat 💬 — you could be next!"));
+  }
+  body.append(badge);
+  if (c == null) { body.append(waitBox("🗂️", "João is choosing the case file…")); return; }
+  const cs = CASES[c], f = found();
+  const q = el("div", "quote"); q.append(el("div", "qw", cs.emo + "  " + cs.who + " says:"), el("div", "q", "“" + cs.q + "”"));
+  q.querySelector(".q").style.fontSize = "clamp(24px, 7vw, 34px)";
+  const keys = el("div", "keys");
+  cs.keys.forEach((k, j) => {
+    const b = el("div", "key" + (f.has(j) ? " found" : r.revealed ? " missed" : ""));
+    b.append(el("span", "ic", "🔑"), el("span", null, f.has(j) || r.revealed ? k : "Golden question #" + (j + 1) + " — still hidden…"));
+    keys.append(b);
+  });
+  body.append(q, keys);
+  if (r.revealed) { const t = el("div", "truth"); t.append(truthBits(cs, f.size)); body.append(t); }
+}
+function waitBox(icon, text) { const w = el("div", "wait panel"); w.append(el("span", "big", icon), document.createTextNode(text)); return w; }
+
+function renderClient(body, r, c) {
+  const badge = el("div", "badge client");
+  badge.append(el("div", "big", "🎭 You're the client!"), el("div", null, "Only you can see this. " + nameOf(r.ba).replace(/^\S+ /, "") + " is the detective."));
+  body.append(badge);
+  if (c == null) { body.append(waitBox("🗂️", "João is choosing your case… get into character 😈")); return; }
+  const cs = CASES[c], f = found();
+  const head = el("div", "card");
+  head.append(el("div", "secret", "TOP SECRET · DON'T SHARE YOUR SCREEN"), el("h3", null, "You are the " + cs.who + " " + cs.emo),
+    el("div", "hint", "Start by saying, out loud:"), el("div", "opening", "“" + cs.q + "”"),
+    el("div", "hint", "Then stay vague. Only give a fact when they ask the right kind of question."));
+  const keys = el("div", "card");
+  keys.append(el("h3", null, "🔑 Golden questions — tap when they ask one"));
+  keys.append(el("div", "hint", "Close enough counts. It lights up on João's screen."));
+  cs.keys.forEach((k, j) => {
+    const on = f.has(j);
+    const b = el("button", "tapkey" + (on ? " on" : "")); b.type = "button";
+    b.append(el("span", null, on ? "✅" : "🔑"), el("span", null, k), el("span", "act", on ? "ASKED" : "TAP"));
+    b.disabled = !!r.revealed;
+    b.onclick = () => toggleKey(j);
+    keys.append(b);
+  });
+  const facts = el("div", "card"); facts.append(el("h3", null, "Your facts — only when asked"));
+  const ul = el("ul"); cs.facts.forEach(x => ul.append(el("li", null, x))); facts.append(ul);
+  const truth = el("div", "card");
+  truth.append(el("h3", null, "The truth (keep it secret!)"), el("div", null, cs.need), el("div", "hint", "Solution: " + cs.solution));
+  body.append(head, keys, facts, truth);
+  if (r.revealed) { const t = el("div", "truth"); t.append(truthBits(cs, f.size)); body.prepend(t); }
+}
+
+/* ---------- role shuffle animation (every screen) ---------- */
+let shuffle = null;
+function startShuffle() {
+  const r = round();
+  const ps = state.players.length ? state.players : [];
+  if (!r || !ps.length) return;
+  const names = ps.map(p => p.avatar + " " + p.name);
+  const T = { client: reduce ? 300 : 2200, ba: reduce ? 600 : 3400 };
+  const N = { client: Math.max(14, names.length * 2), ba: Math.max(20, names.length * 3) };
+  const off = { client: Math.floor(Math.random() * names.length), ba: Math.floor(Math.random() * names.length) };
+  const t0 = performance.now();
+  shuffle = { show: { client: names[off.client], ba: names[off.ba] } };
+  const last = { client: -1, ba: -1 }, landed = {};
+  render();
+  (function frame() {
+    const t = Math.max(0, performance.now() - t0); // timer-driven so it still finishes in a background tab
+    for (const k of ["client", "ba"]) {
+      if (t >= T[k]) {
+        if (!landed[k]) { landed[k] = true; shuffle.show[k] = nameOf(round() ? round()[k] : null); bump(k); blip(880, 0, .2, .08, "triangle"); }
+        continue;
+      }
+      const idx = Math.floor(N[k] * (1 - Math.pow(1 - t / T[k], 3)));
+      if (idx !== last[k]) { last[k] = idx; shuffle.show[k] = names[(off[k] + idx) % names.length]; if (k === "ba" || t < T.client) blip(1500, 0, .03, .04); }
+    }
+    document.querySelectorAll(".role").forEach(d => {
+      const k = d.dataset.slot; if (!k) return;
+      d.classList.toggle("spinning", !landed[k]);
+      d.querySelector(".nm").textContent = shuffle.show[k];
+    });
+    if (t < T.ba + 50) setTimeout(frame, 30);
+    else { shuffle = null; render(); fanfare(); }
+  })();
+}
+function bump(k) { document.querySelectorAll('.role[data-slot="' + k + '"]').forEach(d => { d.classList.remove("landed"); void d.offsetWidth; d.classList.add("landed"); }); }
+
+/* ---------- timer (host screen only) ---------- */
+let left = DUR, ticking = null;
+function fmt(s) { return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function drawClock() {
+  const c = $("clock"); c.textContent = left <= 0 ? "Time's up! ⏰" : fmt(left);
+  c.classList.toggle("low", left > 0 && left <= 20);
+  c.classList.toggle("over", left <= 0);
+  $("timerBtn").textContent = ticking ? "Pause" : (left === DUR ? "Start" : left <= 0 ? "Done" : "Resume");
+}
+function toggleTimer() {
+  if (left <= 0) return;
+  if (ticking) stopTimer();
+  else ticking = setInterval(() => { left--; if (left === 0) { stopTimer(); chime(392); setTimeout(() => chime(330), 200); } drawClock(); }, 1000);
+  drawClock();
+}
+function stopTimer() { clearInterval(ticking); ticking = null; drawClock(); }
+function resetTimer() { stopTimer(); left = DUR; drawClock(); }
+
+/* ---------- sound (host only) ---------- */
+let actx = null;
+function audio() {
+  if (!isHost || !soundOn) return null;
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) { return null; }
+  return actx;
+}
+function blip(freq, at, len, vol, type) {
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type || "square"; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, a.currentTime + at); g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + at + len);
+  o.connect(g).connect(a.destination); o.start(a.currentTime + at); o.stop(a.currentTime + at + len + .02);
+}
+const chime = f => blip(f, 0, .5, .12, "triangle");
+const fanfare = () => [523, 659, 784, 1047].forEach((f, i) => blip(f, i * .11, i === 3 ? .5 : .14, .09, "triangle"));
+
+/* ---------- actions ---------- */
+async function hostCall(fn, args) {
+  busy = true; render();
+  const { error } = await sb.rpc(fn, Object.assign({ p_pin: pin }, args || {}));
+  busy = false;
+  if (error) { setNotice(/PIN/i.test(error.message) ? "Wrong host PIN. Reload the page and log in again." : "That didn't work: " + error.message); render(); return false; }
+  setNotice(""); await loadState(); return true;
+}
+function confirm2(key, fn) {
+  if (armed === key) { armed = null; clearTimeout(armTimer); fn(); render(); return; }
+  armed = key; clearTimeout(armTimer); armTimer = setTimeout(() => { armed = null; render(); }, 3500); render();
+}
+function pick() {
+  if (!isHost || busy || shuffle || !state || state.phase !== "playing" || state.players.length < 2) return;
+  audio();
+  hostCall("host_dd_pick");
+}
+function openCase(i) {
+  if (!isHost || busy || shuffle || !round()) return;
+  audio();
+  hostCall("host_dd_case", { p_case: i });
+}
+function toBoard() { if (isHost && caseIdx() != null) { stopTimer(); hostCall("host_dd_case", { p_case: null }); } }
+async function toggleKey(j) {
+  const r = round();
+  if (!r || caseIdx() == null) return;
+  const amClient = !isHost && r.client === myId;
+  if (!isHost && !(amClient && !r.revealed)) return;
+  const f = found(), on = !f.has(j);
+  on ? f.add(j) : f.delete(j);
+  state.round = Object.assign({}, r, { found: [...f].sort() });
+  holdUntil = Date.now() + 4000;
+  if (on && isHost) chime(660 + j * 110);
+  if (on && !isHost && navigator.vibrate) navigator.vibrate(40);
+  render();
+  const { error } = await sb.rpc("dd_key", { p_pin: isHost ? pin : "", p_id: isHost ? null : myId, p_key: j, p_on: on });
+  if (error) { setNotice("That didn't work: " + error.message); holdUntil = 0; }
+  await loadState();
+}
+function reveal() {
+  const r = round();
+  if (!isHost || !r || caseIdx() == null || r.revealed) return;
+  state.round = Object.assign({}, r, { revealed: true }); holdUntil = Date.now() + 4000;
+  stopTimer(); chime(523); setTimeout(() => chime(784), 140); render();
+  hostCall("host_dd_reveal");
+}
+
+$("joinSec").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("nameInput").value.trim();
+  if (!name) { setNotice("Add your first name first 🙂"); $("nameInput").focus(); return; }
+  $("joinBtn").disabled = true;
+  const { error } = await sb.rpc("dd_join", { p_id: myId, p_name: name, p_avatar: myAvatar });
+  $("joinBtn").disabled = false;
+  if (error) { setNotice(/full/i.test(error.message) ? "The game is full." : "Couldn't join: " + error.message); return; }
+  myName = name; store.set("dd.name", name); store.set("dd.avatar", myAvatar);
+  editing = false; setNotice("");
+  await loadState();
+});
+$("joinCancel").onclick = () => { editing = false; render(); };
+$("pinSec").addEventListener("submit", async e => {
+  e.preventDefault();
+  const p = $("pinInput").value;
+  const { data, error } = await sb.rpc("host_check", { p_pin: p });
+  if (error || !data) { setNotice("That PIN isn't right."); return; }
+  pin = p; store.sset("dd.pin", p); isHost = true; setNotice(""); render();
+});
+$("startBtn").onclick = () => hostCall("host_dd_start");
+$("clearAll").onclick = () => confirm2("clear", () => hostCall("host_dd_reset", { p_clear_players: true }));
+$("pickBtn").onclick = pick;
+$("nextBtn").onclick = pick;
+$("backBtn").onclick = toBoard;
+$("timerBtn").onclick = () => { audio(); toggleTimer(); };
+$("timerReset").onclick = resetTimer;
+$("revealBtn").onclick = reveal;
+$("soundBtn").onclick = () => { soundOn = !soundOn; store.set("dd.sound", soundOn ? "on" : "off"); render(); };
+$("newGameBtn").onclick = () => confirm2("new", () => hostCall("host_dd_start"));
+$("lobbyBtn").onclick = () => confirm2("lobby", () => hostCall("host_dd_reset", { p_clear_players: false }));
+addEventListener("keydown", e => {
+  if (!isHost || !state || state.phase !== "playing") return;
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  const c = caseIdx();
+  if (c == null) return;
+  if (e.code === "Space") { e.preventDefault(); audio(); toggleTimer(); }
+  else if (["1", "2", "3"].includes(e.key)) toggleKey(+e.key - 1);
+  else if (e.key === "r" || e.key === "R") reveal();
+  else if (e.key === "Escape") toBoard();
+});
+addEventListener("hashchange", render);
+
+(async function boot() {
+  if (pin) { const { data } = await sb.rpc("host_check", { p_pin: pin }); isHost = !!data && wantsHost(); }
+  await loadState();
+  sb.channel("dd_state").on("postgres_changes", { event: "*", schema: "public", table: "dd_state" }, p => { if (p.new && p.new.id === 1) applyState(p.new); }).subscribe();
+  setInterval(loadState, POLL_MS);
+})();
+</script>
+</body>
+</html>
