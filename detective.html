@@ -140,6 +140,9 @@ h2 { font-family: var(--font-type); font-weight: 400; font-size: clamp(22px, 3vw
 .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-weight: 700; font-size: 14px; }
 .chip .hist { font-size: 12px; letter-spacing: 1px; }
+.chip .rm { border: 0; background: none; color: var(--muted); padding: 0 0 0 2px; font-size: 14px; line-height: 1; opacity: 0; transition: opacity .15s; }
+.chip:hover .rm, .chip .rm:focus-visible { opacity: 1; }
+.chip .rm:hover { color: var(--red); }
 .chip.done { opacity: .45; }
 .chip.done::after { content: "✓"; color: var(--ok); }
 .chip.client { background: var(--red); border-color: transparent; color: #fff; }
@@ -547,6 +550,12 @@ function renderHost() {
     const hh = (state.history || {})[p.id] || {};
     ch.append(el("span", null, p.avatar), el("span", null, p.name));
     if (hh.c || hh.b) { const m = el("span", "hist", "🎭".repeat(Math.min(hh.c || 0, 3)) + "🕵️".repeat(Math.min(hh.b || 0, 3))); m.title = "Played client " + (hh.c || 0) + "×, detective " + (hh.b || 0) + "×"; ch.append(m); }
+    if (!role) { // host can drop someone who isn't here today (click twice)
+      const k = "rm:" + p.id, x = el("button", "rm", armed === k ? "remove?" : "×"); x.type = "button";
+      x.setAttribute("aria-label", "Remove " + p.name);
+      x.onclick = () => confirm2(k, () => hostCall("host_dd_remove", { p_id: p.id }));
+      ch.append(x);
+    }
     chips.append(ch);
   });
   $("soundBtn").textContent = soundOn ? "🔊 Sound on" : "🔇 Sound off";
